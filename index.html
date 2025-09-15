@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fi">
 
 <head>
   <meta charset="utf-8" />
@@ -18,31 +18,77 @@
       filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
     }
 
+    body {
+      background: #000;
+      margin: 0;
+    }
+
     .overlay-text-bottom {
       position: absolute;
       bottom: 0%;
       left: 80px;
       transform: translate(-50%, -50%);
-      font-size: 2em;
       font-weight: bold;
       color: rgb(84, 101, 255);
       background-color: rgb(252, 236, 203);
       border-radius: 20%;
       padding: 10px;
       text-shadow: 2px 2px 2px rgba(139, 139, 139, 0.8);
-      z-index: 1000;
+      z-index: 900;
       font-family: 'Tahoma', 'sans-serif';
       font-size: 24px;
     }
 
-    /* Wind arrow marker */
-    .wind-marker {
-      width: 30px;
-      height: 30px;
-      transform-origin: center center;
+    /* Kelluva ohjauspaneeli (drag-n-drop) */
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(252, 236, 203, 0.96);
+      border-radius: 10px;
+      padding: 10px 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      width: 280px;
+      user-select: none;
+      touch-action: none;
+      /* auttaa kosketusraahauksessa */
     }
 
-    /* Popup table */
+    .cp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 700;
+      margin-bottom: 6px;
+      cursor: move;
+      /* vihje raahattavuudesta */
+    }
+
+    .cp-section {
+      margin: 8px 0;
+    }
+
+    .cp-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border: 1px solid #444;
+      border-radius: 16px;
+      padding: 4px 10px;
+      background: #2b2b2b;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .chip.active {
+      background: #4a4a4a;
+    }
+
     .wind-table {
       border-collapse: collapse;
       width: 100%;
@@ -58,12 +104,10 @@
 
     .wind-table tr.good {
       background-color: #b2f2bb;
-      /* light green */
     }
 
     .wind-table tr.verygood {
       background-color: #28ff45;
-      /* light green */
     }
 
     .leaflet-popup-content-wrapper {
@@ -73,29 +117,35 @@
     .nav-btn {
       display: inline-block;
       margin-top: 6px;
-      padding: 5px 10px;
-      background: rgb(252, 236, 203);
-      color: white;
+      padding: 6px 10px;
+      background: #2b2b2b;
+      color: #fff;
       text-decoration: none;
-      border-radius: 4px;
+      border-radius: 6px;
       font-size: 14px;
-    }
-
-    .spot-label {
-      font-size: 8px;
-      font-weight: bold;
-      color: #333;
-      background: rgba(252, 236, 203, 0.8);
-      padding: 2px 4px;
-      border-radius: 3px;
+      cursor: pointer;
     }
 
     .nav-btn:hover {
-      background: #91a8c0;
+      background: #4a4a4a;
     }
 
-    /* Mobile optimization */
+    .spot-label {
+      font-size: 10px;
+      font-weight: bold;
+      color: #111;
+      background: rgba(252, 236, 203, 0.9);
+      padding: 2px 4px;
+      border-radius: 3px;
+      box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
+    }
+
     @media (max-width: 600px) {
+      .control-panel {
+        width: 90%;
+        left: 5%;
+      }
+
       .wind-table {
         font-size: 10px;
       }
@@ -103,160 +153,217 @@
       .leaflet-popup-content {
         max-width: 250px !important;
       }
+
+      .spot-label {
+        font-size: 9px;
+      }
     }
   </style>
 </head>
 
-<body style="background-color:rgb(0, 0, 0)" ;>
+<body>
   <div id="map"></div>
+
+  <!-- Ohjauspaneeli (drag-n-drop) -->
+  <div class="control-panel" id="controlPanel">
+    <div class="cp-header" id="cpHeader">
+      <span>Ohjauspaneeli</span>
+      <button id="cpToggle" class="nav-btn" style="margin:0;padding:2px 10px;">–</button>
+    </div>
+
+    <div class="cp-section" id="cpBody">
+      <div><b>Nuolen tyyppi</b></div>
+      <label><input type="radio" name="dirMode" value="to" checked> minne tuulee</label>
+      <label style="margin-left:8px;"><input type="radio" name="dirMode" value="from"> mistä tuulee</label>
+
+      <div class="cp-section">
+        <div><b>Laji</b></div>
+        <div id="sportGroup">
+          <span class="chip active" data-sport="surf">Surf</span>
+          <span class="chip" data-sport="kitesurf">Kitesurf</span>
+          <span class="chip" data-sport="kitefoil">Kitefoil</span>
+          <span class="chip" data-sport="wingfoil">Wingfoil</span>
+        </div>
+        <div id="legendText" style="font-size:12px;margin-top:4px;"></div>
+      </div>
+
+      <div class="cp-section">
+        <div><b>Pikavalinnat</b></div>
+        <div id="quickRow"></div>
+      </div>
+
+      <button id="refreshBtn" class="nav-btn" style="width:100%;">Päivitä nyt</button>
+    </div>
+  </div>
+
   <div class="overlay-text-bottom"></div>
+
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script>
-    const map = L.map('map').setView([62.939, 23.184], 9);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors, Crater Surfers'
-    }).addTo(map);
+    const map = L.map('map', { zoomSnap: 0.5 }).setView([62.939, 23.184], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
 
-    // Create custom SVG arrow marker
-    function createWindIcon(direction, speed, best_dir) {
+    const updatestring = '<a href="https://github.com/naapurinpojat/CraterWeather/" target="_blank"><img src="craterweather.jpg" height="100" alt="Crater Weather"/></a>';
+    document.querySelector('.overlay-text-bottom').innerHTML = updatestring;
 
+    // --- asetukset ---
+    const settings = { directionMode: 'to', sport: 'surf' };
+    const SPORT_THRESHOLDS = {
+      surf: { good: [5, 6.9], very: 7, label: 'Surf: hyvä 5–6,9; erittäin hyvä ≥7,0 m/s' },
+      kitesurf: { good: [6, 8.9], very: 9, label: 'Kitesurf: hyvä 6–8,9; erittäin hyvä ≥9,0 m/s' },
+      kitefoil: { good: [3, 5.9], very: 6, label: 'Kitefoil: hyvä 3–5,9; erittäin hyvä ≥6,0 m/s' },
+      wingfoil: { good: [4, 6.9], very: 7, label: 'Wingfoil: hyvä 4–6,9; erittäin hyvä ≥7,0 m/s' }
+    };
+    function getThreshold() { return SPORT_THRESHOLDS[settings.sport]; }
+    function toDirectionTo(d) { return (d + 180) % 360; }
+    function angleInRange(a, s, e) { a = (a + 360) % 360; s = (s + 360) % 360; e = (e + 360) % 360; return s <= e ? (a >= s && a <= e) : (a >= s || a <= e); }
+    function formatMs(v) { return v.toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+
+    function createWindIcon(dirFrom, speed, best_dir) {
+      const thr = getThreshold(); const inBest = angleInRange(dirFrom, best_dir[0], best_dir[1]);
       let color = "#6e571a";
-      if (speed >= 7 && direction >= best_dir[0] && direction <= best_dir[1]) color = "#00ff00";
-      else if (speed >= 3 && direction >= best_dir[0] && direction <= best_dir[1]) color = "#008000";
-
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30"
-             viewBox="0 0 24 24" style="transform: rotate(${direction}deg)">
-          <polygon points="12,2 22,22 12,17 2,22" fill="${color}" />
-        </svg>`;
+      if (speed >= thr.very && inBest) color = "#28ff45";
+      else if (speed >= thr.good[0] && speed <= thr.good[1] && inBest) color = "#b2f2bb";
+      const angle = (settings.directionMode === 'to') ? toDirectionTo(dirFrom) : dirFrom;
       return L.divIcon({
         className: 'wind-marker',
-        html: svg,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
+        html: `<svg width="30" height="30" viewBox="0 0 24 24" style="transform:rotate(${angle}deg)"><polygon points="12,2 22,22 12,17 2,22" fill="${color}"/><circle cx="12" cy="12" r="1.5" fill="#222"/></svg>`,
+        iconSize: [24, 24], iconAnchor: [12, 12]
       });
     }
 
-    // Fetch forecast from Yr.no
     async function fetchForecast(lat, lon) {
-      const res = await axios.get(
-        `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat}&lon=${lon}`
-      );
+      const url = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat}&lon=${lon}`;
+      const res = await axios.get(url, { headers: { 'Accept': 'application/json' } });
       return res.data;
     }
 
-    // Build forecast table
     function buildForecastTable(timeseries, bestDirs) {
-
-      const rows = timeseries.slice(0, 12).map(entry => {
-        const t = entry.time;
-        const finnishTime = new Date(t).toLocaleString("fi-FI", {
-          timeZone: "Europe/Helsinki",
-        });
-        console.log(finnishTime);
-        const wind = entry.data.instant.details.wind_speed;
-        const gust = entry.data.instant.details.wind_speed_of_gust;
-        const dir = entry.data.instant.details.wind_from_direction;
-        const isGood = wind >= 5 && wind < 7 && dir >= bestDirs[0] && dir <= bestDirs[1];
-        const isveryGood = wind >= 7 && dir >= bestDirs[0] && dir <= bestDirs[1];
-        if (isGood) {
-          return `
-          <tr class="${isGood ? 'good' : ''}">
-            <td>${finnishTime}</td>
-            <td>${wind.toFixed(1)}</td>
-            <td>${Math.round(dir)}°</td>
-          </tr>`;
-        }
-        else {
-          return `
-          <tr class="${isveryGood ? 'verygood' : ''}">
-            <td>${finnishTime}</td>
-            <td>${wind.toFixed(1)}</td>
-            <td>${Math.round(dir)}°</td>
-          </tr>`;
-        }
-
-
-      }).join("");
-      return `
-        <table class="wind-table">
-          <tr><th>Time</th><th>Wind</th><th>Dir</th></tr>
-          ${rows}
-        </table>`;
+      const thr = getThreshold();
+      return `<table class="wind-table">
+        <tr><th>Aika</th><th>Tuuli (m/s)</th><th>Suunta (FROM)</th></tr>`+
+        timeseries.slice(0, 12).map(e => {
+          const t = new Date(e.time).toLocaleString("fi-FI", { timeZone: "Europe/Helsinki" });
+          const d = e.data.instant.details; const w = d.wind_speed; const dir = d.wind_from_direction;
+          const very = w >= thr.very && angleInRange(dir, bestDirs[0], bestDirs[1]);
+          const good = !very && w >= thr.good[0] && w <= thr.good[1] && angleInRange(dir, bestDirs[0], bestDirs[1]);
+          const cls = very ? 'verygood' : good ? 'good' : '';
+          return `<tr class="${cls}"><td>${t}</td><td>${formatMs(w)}</td><td>${Math.round(dir)}°</td></tr>`;
+        }).join("") + `</table>`;
     }
 
-    let geoLayer;
-    let spotData; // store loaded GeoJSON
-    var updatestring = '<a href="https://github.com/naapurinpojat/CraterWeather/" target="_blank"><img id="scaledImage" src = "craterweather.jpg" height="100" alt="Crater Weather"/></a>';
-    document.querySelector('.overlay-text-bottom').innerHTML = updatestring;
-    // Function to refresh markers
+    let geoLayer, spotData;
     async function refreshSpots() {
       if (!spotData) return;
-
-      if (geoLayer) {
-        map.removeLayer(geoLayer);
-      }
-
+      if (geoLayer) map.removeLayer(geoLayer);
       geoLayer = L.geoJSON(spotData, {
-        style: function (feature) {
-          // No-surf areas = polygons
-          if (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon") {
-            return {
-              color: "red",
-              fillColor: "red",
-              fillOpacity: 0.3,
-              weight: 2
-            };
-          }
-        },
-        onEachFeature: function (feature, layer) {
-          if (feature.geometry.type !== "Point") {
-            layer.bindPopup(`<b>No-surf area:</b> ${feature.properties.name || ""}`);
-          }
-        },
-        pointToLayer: function (feature, latlng) {
-          const marker = L.marker(latlng);
-          marker.bindTooltip(feature.properties.name, {
-            permanent: true,
-            direction: "right",
-            className: "spot-label"
-          });
-
-
-
+        style: f => (f.geometry.type.match(/Polygon/) ? { color: "red", fillColor: "red", fillOpacity: 0.3, weight: 2 } : undefined),
+        onEachFeature: (f, layer) => { if (f.geometry.type !== "Point") { layer.bindPopup(`<b>No-surf area:</b> ${f.properties.name || ""}`); } },
+        pointToLayer: (f, latlng) => {
+          const m = L.marker(latlng);
+          //m.bindTooltip(f.properties.name, { permanent: true, direction: "right", className: "spot-label", offset: [8, 0] });
           fetchForecast(latlng.lat, latlng.lng).then(data => {
-            const timeseries = data.properties.timeseries;
-            const current = timeseries[0].data.instant.details;
-            const wind = current.wind_speed;
-            const dir = current.wind_from_direction;
-            console.log(data);
-            const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${latlng.lat},${latlng.lng}`;
-
-            marker.setIcon(createWindIcon(dir, wind, feature.properties.best_wind_dir));
-
-            const table = buildForecastTable(timeseries, feature.properties.best_wind_dir);
-            marker.bindPopup(`<b>${feature.properties.name}</b><br>
-                              Best wind: ${feature.properties.best_wind_dir[0]}°–${feature.properties.best_wind_dir[1]}°<br>
-                              Current: ${wind.toFixed(1)} m/s (${Math.round(dir)}°)<br>
-                              Notes: ${feature.properties.notes}<br>
-                              ${table}<br>
-                              <a class="nav-btn" href="${gmapsUrl}" target="_blank">Navigate ➤</a>
-                              `);
-          });
-          return marker;
+            const ts = data.properties.timeseries;
+            const now = ts[0].data.instant.details; const w = now.wind_speed; const dir = now.wind_from_direction;
+            m.setIcon(createWindIcon(dir, w, f.properties.best_wind_dir));
+            const table = buildForecastTable(ts, f.properties.best_wind_dir);
+            m.bindPopup(`<b>${f.properties.name}</b><br>${table}`);
+          }).catch(() => m.bindPopup(`<b>${f.properties.name}</b><br>Ennusteen haku epäonnistui.`));
+          return m;
         }
       }).addTo(map);
     }
 
-    // Load spots.geojson once, then refresh every 5 min
-    fetch("spots.geojson")
-      .then(res => res.json())
-      .then(spots => {
-        spotData = spots;
-        refreshSpots();
-        setInterval(refreshSpots, 100000); // every 5 min
-      });
+    fetch("spots.geojson").then(r => r.json()).then(d => { spotData = d; refreshSpots(); setInterval(refreshSpots, 300000); });
+
+    // --- UI: sport, suunta, pikavalinnat ---
+    document.getElementById('sportGroup').addEventListener('click', e => {
+      const chip = e.target.closest('.chip'); if (!chip) return;
+      document.querySelectorAll('#sportGroup .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active'); settings.sport = chip.dataset.sport;
+      document.getElementById('legendText').textContent = SPORT_THRESHOLDS[settings.sport].label;
+      refreshSpots();
+    });
+    document.querySelectorAll('input[name=dirMode]').forEach(r => r.addEventListener('change', e => {
+      settings.directionMode = e.target.value; refreshSpots();
+    }));
+    document.getElementById('legendText').textContent = SPORT_THRESHOLDS[settings.sport].label;
+
+    const QUICK_VIEWS = [
+      { name: 'Lappajärvi', c: [63.164, 23.615], z: 11 },
+      { name: 'Kyrkösjärvi', c: [62.77, 22.92], z: 12 },
+      { name: 'Vaasa', c: [63.10, 21.60], z: 11 },
+      { name: 'Tampere', c: [61.50, 23.80], z: 10 },
+      { name: 'Koko alue', c: [62.939, 23.184], z: 9 }
+    ];
+    const quickRow = document.getElementById('quickRow');
+    QUICK_VIEWS.forEach(q => {
+      const b = document.createElement('button');
+      b.className = 'nav-btn'; b.style.padding = '4px 8px'; b.style.fontSize = '13px';
+      b.textContent = q.name; b.onclick = () => map.setView(q.c, q.z);
+      quickRow.appendChild(b);
+    });
+    document.getElementById('refreshBtn').onclick = refreshSpots;
+
+    // --- Paneelin piilota/näytä ---
+    const cpBody = document.getElementById('cpBody');
+    const cpToggle = document.getElementById('cpToggle');
+    let collapsed = false;
+    cpToggle.addEventListener('click', () => {
+      collapsed = !collapsed;
+      cpBody.style.display = collapsed ? 'none' : 'block';
+      cpToggle.textContent = collapsed ? '+' : '–';
+    });
+
+    // --- Drag & drop: raahaa paneelia otsikosta ---
+    (function makeDraggable() {
+      const panel = document.getElementById('controlPanel');
+      const header = document.getElementById('cpHeader');
+      let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+      function onMouseDown(e) {
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        const rect = panel.getBoundingClientRect();
+        startLeft = rect.left; startTop = rect.top;
+        document.body.style.userSelect = 'none';
+      }
+      function onMouseMove(e) {
+        if (!dragging) return;
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        panel.style.left = Math.max(0, startLeft + dx) + 'px';
+        panel.style.top = Math.max(0, startTop + dy) + 'px';
+      }
+      function onMouseUp() {
+        dragging = false;
+        document.body.style.userSelect = '';
+      }
+
+      function onTouchStart(e) {
+        const t = e.touches[0];
+        dragging = true;
+        startX = t.clientX; startY = t.clientY;
+        const rect = panel.getBoundingClientRect();
+        startLeft = rect.left; startTop = rect.top;
+      }
+      function onTouchMove(e) {
+        if (!dragging) return;
+        const t = e.touches[0];
+        const dx = t.clientX - startX, dy = t.clientY - startY;
+        panel.style.left = Math.max(0, startLeft + dx) + 'px';
+        panel.style.top = Math.max(0, startTop + dy) + 'px';
+      }
+      function onTouchEnd() { dragging = false; }
+
+      header.addEventListener('mousedown', onMouseDown);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+
+      header.addEventListener('touchstart', onTouchStart, { passive: true });
+      window.addEventListener('touchmove', onTouchMove, { passive: true });
+      window.addEventListener('touchend', onTouchEnd);
+    })();
   </script>
 </body>
 
